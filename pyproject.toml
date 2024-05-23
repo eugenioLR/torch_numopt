@@ -1,0 +1,13 @@
+[project]
+name = "pytorch_soom"
+version = "1.0.0"
+description = "Second order optimizaton methods for Pytorch neural networks"
+readme = "README.md"
+authors = [
+    { name = "eugenioLR", email = "eugeniolorente0@gmail.com" }
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "torch"
+]
