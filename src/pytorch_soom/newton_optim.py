@@ -5,7 +5,7 @@ from torch.nn.utils.stateless import functional_call
 from .second_order_optimizer import SecondOrderOptimizer
 import copy
 
-class Newton_cpd(SecondOrderOptimizer):
+class Newton(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     """
@@ -52,6 +52,22 @@ class Newton_cpd(SecondOrderOptimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
+
+
+        parameters = dict(self._model.named_parameters())
+        keys, values = zip(*parameters.items())
+
+        self._h_list = []
+
+        if self.hessian_approx:
+            raise Exception("Not implemented yet, bruh.")
+        else:
+            def func(*params):
+                out = functional_call(self._model, {n: p for n, p in zip(keys, params)}, x)
+                return out.square().sum()
+            self._h_list = torch.autograd.functional.hessian(func, tuple(self._model.parameters()), create_graph=True)
+            self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
+            
         
         for group in self.param_groups:
             params_with_grad = []
@@ -63,24 +79,12 @@ class Newton_cpd(SecondOrderOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            parameters = dict(self._model.named_parameters())
-            keys, values = zip(*parameters.items())
-
-            self._h_list = []
-            if self.hessian_approx:
-                raise Exception("Not implemented yet, bruh.")
-            else:
-                def func(*params):
-                    out = functional_call(self._model, {n: p for n, p in zip(keys, params)}, x)
-                    return out.square().sum()
-                self._h_list = torch.autograd.functional.hessian(func, tuple(self._model.parameters()), create_graph=True)
-                self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
-                self._h_list = [h.flatten(end_dim=len(self._h_list[i].shape)-len(d_p_list[i].shape)-1).flatten(start_dim=1) for i, h in enumerate(self._h_list)]
+            h_list = [h.flatten(end_dim=len(self._h_list[i].shape)-len(d_p_list[i].shape)-1).flatten(start_dim=1) for i, h in enumerate(self._h_list)]
         
             self._apply_gradients(
                 params_with_grad, 
                 d_p_list,
-                self._h_list,
+                h_list,
                 lr
             )
         

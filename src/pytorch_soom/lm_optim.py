@@ -3,14 +3,15 @@ from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.nn.utils.stateless import functional_call
 from .second_order_optimizer import SecondOrderOptimizer
-import copy
+import warnings
+from copy import copy, deepcopy
 
-class LM_cpd(SecondOrderOptimizer):
+class LM(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     """
 
-    def __init__(self, params, lr, model, ld=1, hessian_approx = False):
+    def __init__(self, params, lr, model, ld=1, use_diagonal = True, hessian_approx = False):
         assert lr > 0, "Learning rate must be a positive number"
 
         super().__init__(params, {"lr": lr})
@@ -23,6 +24,10 @@ class LM_cpd(SecondOrderOptimizer):
         self._j_list = []
         self._h_list = []
         self.prev_loss = None
+        self._prev_params = deepcopy(self.param_groups[0]['params'])
+        self.use_diagonal = use_diagonal
+        if use_diagonal:
+            warnings.warn("Using the diagonal of the Hessian instead of the Identity matrix might lead to numerical instablity (it's probably just a bug on my part).", stacklevel=2)
     
     def _apply_gradients(self, params, d_p_list, h_list, lr):
         """
@@ -38,8 +43,13 @@ class LM_cpd(SecondOrderOptimizer):
 
             diag_vec = h.diagonal() + torch.finfo(h.dtype).eps * 1
             h.as_strided([h.size(0)], [h.size(0) + 1]).copy_(diag_vec)
-            h_adjusted = h + self.ld * torch.eye(h.shape[0])
-            # h_adjusted = h + self.ld * h.diagonal()
+
+            if self.use_diagonal:
+                adjustment = h.diagonal()
+            else:
+                adjustment = torch.eye(h.shape[0])
+
+            h_adjusted = h + self.ld * adjustment
             h_i = h_adjusted.pinverse()
 
             assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
@@ -56,6 +66,22 @@ class LM_cpd(SecondOrderOptimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
+
+
+        parameters = dict(self._model.named_parameters())
+        keys, values = zip(*parameters.items())
+
+        self._h_list = []
+
+        if self.hessian_approx:
+            raise Exception("Not implemented yet, bruh.")
+        else:
+            def func(*params):
+                out = functional_call(self._model, {n: p for n, p in zip(keys, params)}, x)
+                return out.square().sum()
+            self._h_list = torch.autograd.functional.hessian(func, tuple(self._model.parameters()), create_graph=True)
+            self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
+            
         
         for group in self.param_groups:
             params_with_grad = []
@@ -67,40 +93,25 @@ class LM_cpd(SecondOrderOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            parameters = dict(self._model.named_parameters())
-            keys, values = zip(*parameters.items())
-
-            self._h_list = []
-            if self.hessian_approx:
-                raise Exception("Not implemented yet, bruh.")
-            else:
-                def func(*params):
-                    out = functional_call(self._model, {n: p for n, p in zip(keys, params)}, x)
-                    return out.square().sum()
-                self._h_list = torch.autograd.functional.hessian(func, tuple(self._model.parameters()), create_graph=True)
-                self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
-                self._h_list = [h.flatten(end_dim=len(self._h_list[i].shape)-len(d_p_list[i].shape)-1).flatten(start_dim=1) for i, h in enumerate(self._h_list)]
+            h_list = [h.flatten(end_dim=len(self._h_list[i].shape)-len(d_p_list[i].shape)-1).flatten(start_dim=1) for i, h in enumerate(self._h_list)]
         
             self._apply_gradients(
                 params_with_grad, 
                 d_p_list,
-                self._h_list,
+                h_list,
                 lr
             )
         
-        # print(loss)
-        # if self.prev_loss is not None and self.prev_loss:
-        #     self.ld *= 10
-        # else:
-        #     self.ld /= 10
-        # self.prev_loss = self._model(x).square().sum()
-
-        
         return loss
     
-    def update(self, model, loss):
+    def update(self, loss):
         loss_val = loss.detach().item()
 
-        if prev_loss is None or loss_val > self.prev_loss:
-            pass
-    
+        if self.prev_loss is None or loss_val > self.prev_loss:
+            self._params = self._prev_params
+            self.ld *= 10
+        else:
+            self.prev_loss = loss_val
+            self._prev_params = deepcopy(self._params)
+            self.ld /= 10
+        

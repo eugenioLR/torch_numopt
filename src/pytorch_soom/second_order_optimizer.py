@@ -6,12 +6,13 @@ import copy
 
 class SecondOrderOptimizer(Optimizer):
     """
+    Class for Optimization methods using second derivative information.
     """
 
-    def step(self, x, y, closure=None):
+    def step(self, x, closure=None):
         """
         """
 
-    def update(self, model, x, y):
+    def update(self, loss):
         """
         """
