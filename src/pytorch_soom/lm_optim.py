@@ -1,8 +1,8 @@
 import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
-from torch.nn.utils.stateless import functional_call
-from .second_order_optimizer import SecondOrderOptimizer
+from torch.func import functional_call
+from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_svd_trunc
 import warnings
 from copy import copy, deepcopy
 
@@ -11,8 +11,8 @@ class LM(SecondOrderOptimizer):
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     """
 
-    def __init__(self, params, lr, model, ld=1, use_diagonal = True, hessian_approx = False):
-        assert lr > 0, "Learning rate must be a positive number"
+    def __init__(self, params, lr, model, ld=1, use_diagonal = True, hessian_approx = False, debug_stability = True):
+        assert lr > 0, "Learning rate must be a positive number" 
 
         super().__init__(params, {"lr": lr})
 
@@ -26,8 +26,7 @@ class LM(SecondOrderOptimizer):
         self.prev_loss = None
         self._prev_params = deepcopy(self.param_groups[0]['params'])
         self.use_diagonal = use_diagonal
-        if use_diagonal:
-            warnings.warn("Using the diagonal of the Hessian instead of the Identity matrix might lead to numerical instablity (it's probably just a bug on my part).", stacklevel=2)
+        self.debug_stability = debug_stability
     
     def _apply_gradients(self, params, d_p_list, h_list, lr):
         """
@@ -46,11 +45,14 @@ class LM(SecondOrderOptimizer):
 
             if self.use_diagonal:
                 adjustment = h.diagonal()
+                h_adjusted = h + self.ld * adjustment
+                
+                # Use truncated SVD pseudoinverse to address numerical instability
+                h_i = pinv_svd_trunc(h_adjusted)
             else:
-                adjustment = torch.eye(h.shape[0])
-
-            h_adjusted = h + self.ld * adjustment
-            h_i = h_adjusted.pinverse()
+                adjustment = torch.eye(h.shape[0], device=h.device)
+                h_adjusted = h + self.ld * adjustment
+                h_i = h_adjusted.pinverse()
 
             assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
 
@@ -109,9 +111,9 @@ class LM(SecondOrderOptimizer):
 
         if self.prev_loss is None or loss_val > self.prev_loss:
             self._params = self._prev_params
-            self.ld *= 10
+            # self.ld *= 10
         else:
             self.prev_loss = loss_val
             self._prev_params = deepcopy(self._params)
-            self.ld /= 10
+            # self.ld /= 10
         
