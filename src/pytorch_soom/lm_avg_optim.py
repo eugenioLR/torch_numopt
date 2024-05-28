@@ -7,7 +7,7 @@ import warnings
 from copy import copy, deepcopy
 
 
-class LM(SecondOrderOptimizer):
+class LMAvg(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     and the matlab implementation of 'learnlm' https://es.mathworks.com/help/deeplearning/ref/trainlm.html#d126e69092
@@ -23,7 +23,6 @@ class LM(SecondOrderOptimizer):
         mu=1,
         mu_dec=0.1,
         mu_max=1e10,
-        weight_decay=0,
         use_diagonal=True,
         hessian_approx=False,
         debug_stability=True,
@@ -39,11 +38,8 @@ class LM(SecondOrderOptimizer):
         self.mu_dec = mu_dec
         self.mu_max = mu_max
 
-        self.weight_decay = weight_decay
-
         self._model = model
         self._params = self.param_groups[0]["params"]
-
 
         self._j_list = []
         self._h_list = []
@@ -68,13 +64,13 @@ class LM(SecondOrderOptimizer):
 
             if self.use_diagonal:
                 adjustment = h.diagonal()
-                h_adjusted = h + self.mu * adjustment
+                h_adjusted = (1-self.mu) * h + self.mu * adjustment
 
                 # Use truncated SVD pseudoinverse to address numerical instability
                 h_i = pinv_svd_trunc(h_adjusted)
             else:
                 adjustment = torch.eye(h.shape[0], device=h.device)
-                h_adjusted = h + self.mu * adjustment
+                h_adjusted = (1-self.mu) * h + self.mu * adjustment
 
                 h_i = h_adjusted.pinverse()
 
@@ -92,11 +88,11 @@ class LM(SecondOrderOptimizer):
             with torch.enable_grad():
                 loss = closure()
 
-        param_dict = dict(self._model.named_parameters())
-        keys, values = zip(*param_dict.items())
+        parameters = dict(self._model.named_parameters())
+        keys, values = zip(*parameters.items())
 
-        def func(*input_params):
-            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+        def func(*params):
+            out = functional_call(self._model, {n: p for n, p in zip(keys, params)}, x)
             return loss_fn(out, y)
 
         self._h_list = []
@@ -130,16 +126,10 @@ class LM(SecondOrderOptimizer):
     def update(self, loss):
         loss_val = loss.detach().item()
 
-        if self.prev_loss is None:
+        if self.prev_loss is None or loss_val < self.prev_loss:
             self.prev_loss = loss_val
             self._prev_params = deepcopy(self._params)
-        elif loss_val < self.prev_loss:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-            self.mu *= self.mu_dec
+            self.mu = self.mu * self.mu_dec
         else:
             self._params = self._prev_params
-            self.mu /= self.mu_dec
-
-        if self.mu >= self.mu_max:
-            self.mu = self.mu_max
+            self.mu = 1 - ((1 - self.mu) * self.mu_dec)
