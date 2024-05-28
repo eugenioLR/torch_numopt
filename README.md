@@ -9,10 +9,10 @@ Due to computational constraints, these methods are to be used with small Neural
 
 ## Planned optimizers
 
-- [ ] Newton
+- [x] Newton
+- [x] Gauss-Newton
+- [x] Levemberg-Marquard (LM)
 - [ ] Conjugate Gradient
-- [ ] Gauss-Newton
-- [ ] Levemberg-Marquard (LM)
 - [ ] Quasi-Newton (LBFGS already in pytorch)
 - [ ] Approximate Greatest Descent (AGD)
 - [ ] Hessian-free / truncated Newton

@@ -42,7 +42,19 @@ class Newton(SecondOrderOptimizer):
         self.line_search_method = line_search_method
 
     def _line_search_cond(self):
-        pass
+        accepted = True
+
+        if self.line_search_method == 'armijo':
+            pass
+        elif self.line_search_method == 'wolfe':
+            pass
+        elif self.line_search_method == 'strong-wolfe':
+            pass
+        elif self.line_search_method == 'goldstein':
+            pass
+        
+        return accepted
+
 
     @torch.enable_grad()
     def _backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model):
