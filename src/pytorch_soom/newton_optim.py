@@ -41,15 +41,28 @@ class Newton(SecondOrderOptimizer):
         self.tau = tau
         self.line_search_method = line_search_method
 
-    def _line_search_cond(self):
+    def _line_search_cond(self, params, new_params, step_dir, lr, loss, new_loss, grad):
         accepted = True
 
+        dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
         if self.line_search_method == 'armijo':
-            pass
+            accepted = new_loss <= loss + self.c1 * lr * dir_deriv
         elif self.line_search_method == 'wolfe':
-            pass
+            new_grad = torch.autograd.grad(new_loss, new_params)
+            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+
+            armijo = new_loss <= loss + self.c1 * lr * dir_deriv
+            curv_cond = new_dir_deriv >= self.c2 * dir_deriv
+
+            accepted = armijo and curv_cond
         elif self.line_search_method == 'strong-wolfe':
-            pass
+            new_grad = torch.autograd.grad(new_loss, new_params)
+            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+
+            armijo = new_loss <= loss + self.c1 * lr * dir_deriv
+            curv_cond = abs(new_dir_deriv) <= self.c2 * abs(dir_deriv)
+
+            accepted = armijo and curv_cond
         elif self.line_search_method == 'goldstein':
             pass
         
@@ -61,23 +74,16 @@ class Newton(SecondOrderOptimizer):
         lr = lr_init
 
         prev_loss = eval_model(*params)
-        dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
         new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
         new_loss = eval_model(*new_params)
-        new_grad = torch.autograd.grad(new_loss, new_params)
 
-        armijo_cond = new_loss <= prev_loss + self.c1 * lr * dir_deriv
-        while not armijo_cond:
+        while not self._line_search_cond(params, new_params, step_dir, lr, loss, new_loss, grad):
             lr *= self.tau
 
             # Evaluate model with new lr
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
             new_loss = eval_model(*new_params)
-            new_grad = torch.autograd.grad(new_loss, new_params)
-
-            # Recalculate conditions for new lr
-            armijo_cond = new_loss <= prev_loss + self.c1 * lr * dir_deriv
 
         return new_params
     
