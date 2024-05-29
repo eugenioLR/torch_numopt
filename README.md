@@ -9,7 +9,7 @@ Due to computational constraints, these methods are to be used with small Neural
 
 ## Planned optimizers
 
-- [x] Newton
+- [x] Newton-Raphson
 - [x] Gauss-Newton *
 - [x] Levemberg-Marquard (LM)
 - [x] Approximate Greatest Descent (AGD) *
