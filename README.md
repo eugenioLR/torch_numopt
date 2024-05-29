@@ -17,4 +17,4 @@ Due to computational constraints, these methods are to be used with small Neural
 - [ ] Quasi-Newton (LBFGS already in pytorch)
 - [ ] Hessian-free / truncated Newton
 
-* Needs to be extrated to its own class
+\* Needs to be extrated to its own class
