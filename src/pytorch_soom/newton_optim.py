@@ -40,32 +40,32 @@ class Newton(SecondOrderOptimizer):
         self.c2 = c2
         self.tau = tau
         self.line_search_method = line_search_method
+        self.line_search_cond = line_search_cond
 
     def _line_search_cond(self, params, new_params, step_dir, lr, loss, new_loss, grad):
         accepted = True
 
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
-        if self.line_search_method == 'armijo':
+
+        if self.line_search_cond == 'armijo':
             accepted = new_loss <= loss + self.c1 * lr * dir_deriv
-        elif self.line_search_method == 'wolfe':
+        elif self.line_search_cond == 'wolfe':
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
-
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = new_dir_deriv >= self.c2 * dir_deriv
-
             accepted = armijo and curv_cond
-        elif self.line_search_method == 'strong-wolfe':
+        elif self.line_search_cond == 'strong-wolfe':
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
-
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = abs(new_dir_deriv) <= self.c2 * abs(dir_deriv)
-
             accepted = armijo and curv_cond
-        elif self.line_search_method == 'goldstein':
-            pass
-        
+        elif self.line_search_cond == 'goldstein':
+            accepted = loss + (1 - self.c1) * lr * dir_deriv <= new_loss <= loss + self.c1 * lr * dir_deriv
+        else:
+            raise ValueError(f"Line search condition {self.line_search_cond} does not exist.")
+
         return accepted
 
 
@@ -73,7 +73,7 @@ class Newton(SecondOrderOptimizer):
     def _backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model):
         lr = lr_init
 
-        prev_loss = eval_model(*params)
+        loss = eval_model(*params)
 
         new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
         new_loss = eval_model(*new_params)
@@ -84,6 +84,9 @@ class Newton(SecondOrderOptimizer):
             # Evaluate model with new lr
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
             new_loss = eval_model(*new_params)
+
+            if lr <= 1e-10:
+                break
 
         return new_params
     
@@ -135,9 +138,6 @@ class Newton(SecondOrderOptimizer):
         keys, values = zip(*param_dict.items())
         
         def eval_model(*input_params):
-            # print(type(input_params))
-            # print(type(input_params[0]))
-            # print(input_params)
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
