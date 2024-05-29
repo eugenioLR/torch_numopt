@@ -16,7 +16,6 @@ class GaussNewton(SecondOrderOptimizer):
         params,
         lr,
         model,
-        hessian_approx=False,
         c1=1e-4,
         c2=0.9,
         tau=0.1,
@@ -27,8 +26,6 @@ class GaussNewton(SecondOrderOptimizer):
         assert lr > 0, "Learning rate must be a positive number."
 
         super().__init__(params, {"lr": lr})
-
-        self.hessian_approx = hessian_approx
 
         self._model = model
         self._params = self.param_groups[0]["params"]
