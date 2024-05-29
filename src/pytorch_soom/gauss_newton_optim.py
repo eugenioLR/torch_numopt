@@ -6,7 +6,7 @@ from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_sv
 from copy import deepcopy
 
 
-class NewtonRaphson(SecondOrderOptimizer):
+class GaussNewton(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     """
@@ -139,15 +139,22 @@ class NewtonRaphson(SecondOrderOptimizer):
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
-        # Calculate exact Hessian matrix
         self._h_list = []
-        self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
-        self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
+        if not self.hessian_approx:
+            self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
+            self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
 
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
             lr = group["lr"]
+
+            # Calculate approximate Hessian matrix
+            self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
+            for i, j in enumerate(self._j_list):
+                j = j.flatten()
+                h = torch.outer(j, j)
+                self._h_list.append(h)
 
             for p in group["params"]:
                 if p.grad is not None:

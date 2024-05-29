@@ -1,5 +1,5 @@
 from .second_order_optimizer import SecondOrderOptimizer
-from .newton_optim import Newton
+from .newton_optim import NewtonRaphson
+from .gauss_newton_optim import GaussNewton
 from .lm_optim import LM
-# from .lm_base_optim import LM
-# from .lm_avg_optim import LMAvg
+from .agd_optim import AGD

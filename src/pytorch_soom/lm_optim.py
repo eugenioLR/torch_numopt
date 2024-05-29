@@ -22,7 +22,6 @@ class LM(SecondOrderOptimizer):
         mu_dec=0.1,
         mu_max=1e10,
         use_diagonal=True,
-        hessian_approx=False,
         c1=1e-4,
         c2=0.9,
         tau=0.1,
@@ -34,8 +33,6 @@ class LM(SecondOrderOptimizer):
 
         super().__init__(params, {"lr": lr})
 
-        self.hessian_approx = hessian_approx
-
         self._model = model
         self._params = self.param_groups[0]["params"]
         self._j_list = []
@@ -45,7 +42,6 @@ class LM(SecondOrderOptimizer):
         self.mu_dec = mu_dec
         self.mu_max = mu_max
         self.use_diagonal = use_diagonal
-
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -104,8 +100,6 @@ class LM(SecondOrderOptimizer):
     
     def _apply_gradients(self, params, d_p_list, h_list, lr, eval_model):
         """ """
-        # _, params_tup = zip(*params.items())
-        # params_list = [torch.Tensor(p) for p in params]
 
         step_dir = self._get_step_directions(d_p_list, h_list, lr)
 
@@ -157,23 +151,20 @@ class LM(SecondOrderOptimizer):
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
-        self._h_list = []
-        if not self.hessian_approx:
-            self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
-            self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
-
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
             lr = group["lr"]
 
-            if self.hessian_approx:
-                self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
-                for i, j in enumerate(self._j_list):
-                    j = j.flatten()
-                    h = torch.outer(j, j)
-                    self._h_list.append(h)
+            # Calculate approximate Hessian matrix
+            self._h_list = []
+            self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
+            for i, j in enumerate(self._j_list):
+                j = j.flatten()
+                h = torch.outer(j, j)
+                self._h_list.append(h)
 
+            # Calculte gradients
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)
