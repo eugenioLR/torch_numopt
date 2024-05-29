@@ -7,7 +7,7 @@ import warnings
 from copy import deepcopy
 
 
-class LM(SecondOrderOptimizer):
+class AGD(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     and the matlab implementation of 'learnlm' https://es.mathworks.com/help/deeplearning/ref/trainlm.html#d126e69092
@@ -151,20 +151,16 @@ class LM(SecondOrderOptimizer):
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
+        # Calculate exact Hessian matrix
+        self._h_list = []
+        self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
+        self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
+
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
             lr = group["lr"]
 
-            # Calculate approximate Hessian matrix
-            self._h_list = []
-            self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
-            for i, j in enumerate(self._j_list):
-                j = j.flatten()
-                h = torch.outer(j, j)
-                self._h_list.append(h)
-
-            # Calculte gradients
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)

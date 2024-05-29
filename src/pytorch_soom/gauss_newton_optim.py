@@ -3,25 +3,19 @@ from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
 from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_svd_trunc
-import warnings
 from copy import deepcopy
 
 
-class LM(SecondOrderOptimizer):
+class GaussNewton(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
-    and the matlab implementation of 'learnlm' https://es.mathworks.com/help/deeplearning/ref/trainlm.html#d126e69092
     """
 
     def __init__(
         self,
         params,
-        model,
         lr,
-        mu=1,
-        mu_dec=0.1,
-        mu_max=1e10,
-        use_diagonal=True,
+        model,
         c1=1e-4,
         c2=0.9,
         tau=0.1,
@@ -37,11 +31,6 @@ class LM(SecondOrderOptimizer):
         self._params = self.param_groups[0]["params"]
         self._j_list = []
         self._h_list = []
-
-        self.mu = mu
-        self.mu_dec = mu_dec
-        self.mu_max = mu_max
-        self.use_diagonal = use_diagonal
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -115,17 +104,13 @@ class LM(SecondOrderOptimizer):
     def _get_step_directions(self, d_p_list, h_list, lr):
         dir_list = []
         for d_p, h in zip(d_p_list, h_list):
-            if self.use_diagonal:
-                adjustment = h.diagonal()
-                h_adjusted = h + self.mu * adjustment
+            # Handle issues with numerical stability
+            h = fix_stability(h)
+            h_i = h.pinverse()
 
-                # Use truncated SVD pseudoinverse to address numerical instability
-                h_i = pinv_svd_trunc(h_adjusted)
-            else:
-                adjustment = torch.eye(h.shape[0], device=h.device)
-                h_adjusted = h + self.mu * adjustment
+            # h_i = pinv_svd_trunc(h, thresh=1e-5)
 
-                h_i = h_adjusted.pinverse()
+            # h_i = h.pinverse()
 
             assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
 
@@ -157,14 +142,12 @@ class LM(SecondOrderOptimizer):
             lr = group["lr"]
 
             # Calculate approximate Hessian matrix
-            self._h_list = []
             self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
             for i, j in enumerate(self._j_list):
                 j = j.flatten()
                 h = torch.outer(j, j)
                 self._h_list.append(h)
 
-            # Calculte gradients
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)
@@ -175,21 +158,3 @@ class LM(SecondOrderOptimizer):
             self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
 
         return loss
-
-    def update(self, loss):
-        loss_val = loss.detach().item()
-
-        if self.prev_loss is None:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-        elif loss_val < self.prev_loss:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-            self.mu *= self.mu_dec
-        else:
-            self._params = self._prev_params
-            self.mu /= self.mu_dec
-
-        if self.mu >= self.mu_max:
-            self.mu = self.mu_max
-
