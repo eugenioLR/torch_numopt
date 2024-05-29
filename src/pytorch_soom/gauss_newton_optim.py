@@ -136,11 +136,6 @@ class GaussNewton(SecondOrderOptimizer):
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
-        self._h_list = []
-        if not self.hessian_approx:
-            self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
-            self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
-
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
