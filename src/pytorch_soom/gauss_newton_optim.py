@@ -128,6 +128,9 @@ class GaussNewton(SecondOrderOptimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
+        
+        residual_fn = deepcopy(loss_fn)
+        residual_fn.reduction = 'none'
 
         param_dict = dict(self._model.named_parameters())
         keys, values = zip(*param_dict.items())
@@ -136,16 +139,21 @@ class GaussNewton(SecondOrderOptimizer):
             out = functional_call(self._model, dict(zip(keys, input_params)), x)
             return loss_fn(out, y)
 
+        def get_residuals(*input_params):
+            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+            return residual_fn(out, y)
+
         for group in self.param_groups:
             params_with_grad = []
             d_p_list = []
             lr = group["lr"]
 
             # Calculate approximate Hessian matrix
-            self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
+            self._j_list = torch.autograd.functional.jacobian(get_residuals, values, create_graph=False)
             for i, j in enumerate(self._j_list):
-                j = j.flatten()
-                h = torch.outer(j, j)
+                j = j.flatten(start_dim=1)
+
+                h = j.T @ j
                 self._h_list.append(h)
 
             for p in group["params"]:

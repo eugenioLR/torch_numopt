@@ -11,7 +11,7 @@ Due to computational constraints, these methods are to be used with small Neural
 
 - [x] Newton-Raphson
 - [x] Gauss-Newton
-- [x] Levemberg-Marquard (LM)
+- [x] Levenberg-Marquard (LM)
 - [x] Approximate Greatest Descent (AGD)
 - [ ] Conjugate Gradient
 - [ ] Quasi-Newton (LBFGS already in pytorch)

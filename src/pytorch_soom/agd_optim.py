@@ -171,21 +171,3 @@ class AGD(SecondOrderOptimizer):
             self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
 
         return loss
-
-    def update(self, loss):
-        loss_val = loss.detach().item()
-
-        if self.prev_loss is None:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-        elif loss_val < self.prev_loss:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-            self.mu *= self.mu_dec
-        else:
-            self._params = self._prev_params
-            self.mu /= self.mu_dec
-
-        if self.mu >= self.mu_max:
-            self.mu = self.mu_max
-
