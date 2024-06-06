@@ -2,8 +2,8 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
-from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_svd_trunc
-from copy import deepcopy
+from .second_order_optimizer import SecondOrderOptimizer
+from .utils import fix_stability, pinv_svd_trunc
 
 
 class NewtonRaphson(SecondOrderOptimizer):
@@ -28,9 +28,8 @@ class NewtonRaphson(SecondOrderOptimizer):
         super().__init__(params, {"lr": lr})
 
         self._model = model
+        self._param_keys = dict(model.named_parameters()).keys()
         self._params = self.param_groups[0]["params"]
-        self._j_list = []
-        self._h_list = []
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -108,14 +107,7 @@ class NewtonRaphson(SecondOrderOptimizer):
             h = fix_stability(h)
             h_i = h.pinverse()
 
-            # h_i = pinv_svd_trunc(h, thresh=1e-5)
-
-            # h_i = h.pinverse()
-
-            assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
-
             d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
-
             dir_list.append(d2_p)
 
         return dir_list
@@ -123,36 +115,31 @@ class NewtonRaphson(SecondOrderOptimizer):
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
         """ """
-
-        loss = None
+        
         if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
+            raise NotImplementedError("This optimizer cannot handle closures.")
 
-        param_dict = dict(self._model.named_parameters())
-        keys, values = zip(*param_dict.items())
+        model_params = tuple(self._model.parameters())
         
         def eval_model(*input_params):
-            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
 
         # Calculate exact Hessian matrix
-        self._h_list = []
-        self._h_list = torch.autograd.functional.hessian(eval_model, values, create_graph=True)
-        self._h_list = [self._h_list[i][i] for i, _ in enumerate(self._h_list)]
+        h_list = torch.autograd.functional.hessian(eval_model, model_params, create_graph=True, vectorize=True)
+        # h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
 
         for group in self.param_groups:
-            params_with_grad = []
-            d_p_list = []
             lr = group["lr"]
 
+            # Calculate gradients
+            params_with_grad = []
+            d_p_list = []
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            h_list = [self._reshape_hessian(h) for h in self._h_list]
+            h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
 
             self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
-
-        return loss

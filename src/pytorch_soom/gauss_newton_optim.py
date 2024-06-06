@@ -2,8 +2,9 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
-from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_svd_trunc
-from copy import deepcopy
+from .second_order_optimizer import SecondOrderOptimizer
+from .utils import fix_stability, pinv_svd_trunc
+from copy import copy
 
 
 class GaussNewton(SecondOrderOptimizer):
@@ -28,9 +29,9 @@ class GaussNewton(SecondOrderOptimizer):
         super().__init__(params, {"lr": lr})
 
         self._model = model
+        self._param_keys = dict(model.named_parameters()).keys()
         self._params = self.param_groups[0]["params"]
-        self._j_list = []
-        self._h_list = []
+        
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -102,21 +103,15 @@ class GaussNewton(SecondOrderOptimizer):
             param.copy_(new_param)
 
     def _get_step_directions(self, d_p_list, h_list, lr):
-        dir_list = []
-        for d_p, h in zip(d_p_list, h_list):
+        dir_list = [None] * len(d_p_list)
+        for i, (d_p, h) in enumerate(zip(d_p_list, h_list)):
             # Handle issues with numerical stability
             h = fix_stability(h)
             h_i = h.pinverse()
 
-            # h_i = pinv_svd_trunc(h, thresh=1e-5)
-
-            # h_i = h.pinverse()
-
-            assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
-
             d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
 
-            dir_list.append(d2_p)
+            dir_list[i] = d2_p
 
         return dir_list
 
@@ -124,45 +119,38 @@ class GaussNewton(SecondOrderOptimizer):
     def step(self, x, y, loss_fn, closure=None):
         """ """
 
-        loss = None
         if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-        
-        residual_fn = deepcopy(loss_fn)
+            raise NotImplementedError("This optimizer cannot handle closures.")
+
+        residual_fn = copy(loss_fn)
         residual_fn.reduction = 'none'
 
-        param_dict = dict(self._model.named_parameters())
-        keys, values = zip(*param_dict.items())
+        model_params = tuple(self._model.parameters())
         
         def eval_model(*input_params):
-            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
 
         def get_residuals(*input_params):
-            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return residual_fn(out, y)
 
         for group in self.param_groups:
-            params_with_grad = []
-            d_p_list = []
             lr = group["lr"]
 
             # Calculate approximate Hessian matrix
-            self._j_list = torch.autograd.functional.jacobian(get_residuals, values, create_graph=False)
-            for i, j in enumerate(self._j_list):
+            j_list = torch.autograd.functional.jacobian(get_residuals, model_params, create_graph=False, vectorize=True)
+            h_list = [None] * len(j_list)
+            for j_idx, j in enumerate(j_list):
                 j = j.flatten(start_dim=1)
+                h_list[j_idx] = self._reshape_hessian(j.T @ j)
 
-                h = j.T @ j
-                self._h_list.append(h)
-
+            # Calculte gradients
+            params_with_grad = []
+            d_p_list = []
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            h_list = [self._reshape_hessian(h) for h in self._h_list]
-
             self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
-
-        return loss

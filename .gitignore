@@ -2,3 +2,4 @@ venv
 *.egg*
 __pycache__
 examples/data/
+*.svg
