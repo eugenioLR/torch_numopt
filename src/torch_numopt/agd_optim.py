@@ -25,8 +25,8 @@ class AGD(SecondOrderOptimizer):
         c1=1e-4,
         c2=0.9,
         tau=0.1,
-        line_search_method='const',
-        line_search_cond='armijo',
+        line_search_method="const",
+        line_search_cond="armijo",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -54,27 +54,26 @@ class AGD(SecondOrderOptimizer):
 
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
-        if self.line_search_cond == 'armijo':
+        if self.line_search_cond == "armijo":
             accepted = new_loss <= loss + self.c1 * lr * dir_deriv
-        elif self.line_search_cond == 'wolfe':
+        elif self.line_search_cond == "wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = new_dir_deriv >= self.c2 * dir_deriv
             accepted = armijo and curv_cond
-        elif self.line_search_cond == 'strong-wolfe':
+        elif self.line_search_cond == "strong-wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = abs(new_dir_deriv) <= self.c2 * abs(dir_deriv)
             accepted = armijo and curv_cond
-        elif self.line_search_cond == 'goldstein':
+        elif self.line_search_cond == "goldstein":
             accepted = loss + (1 - self.c1) * lr * dir_deriv <= new_loss <= loss + self.c1 * lr * dir_deriv
         else:
             raise ValueError(f"Line search condition {self.line_search_cond} does not exist.")
 
         return accepted
-
 
     @torch.enable_grad()
     def _backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model):
@@ -96,7 +95,7 @@ class AGD(SecondOrderOptimizer):
                 break
 
         return new_params
-    
+
     def _apply_gradients(self, params, d_p_list, h_list, lr, eval_model):
         """ """
 
@@ -133,19 +132,18 @@ class AGD(SecondOrderOptimizer):
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
         """ """
-        
+
         if closure is not None:
             raise NotImplementedError("This optimizer cannot handle closures.")
 
         model_params = tuple(self._model.parameters())
-        
+
         def eval_model(*input_params):
             out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
 
         # Calculate exact Hessian matrix
         h_list = torch.autograd.functional.hessian(eval_model, model_params, create_graph=True, vectorize=True)
-        # h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
         h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
 
         for group in self.param_groups:
