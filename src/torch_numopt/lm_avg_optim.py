@@ -64,13 +64,13 @@ class LMAvg(SecondOrderOptimizer):
 
             if self.use_diagonal:
                 adjustment = h.diagonal()
-                h_adjusted = (1-self.mu) * h + self.mu * adjustment
+                h_adjusted = (1 - self.mu) * h + self.mu * adjustment
 
                 # Use truncated SVD pseudoinverse to address numerical instability
                 h_i = pinv_svd_trunc(h_adjusted)
             else:
                 adjustment = torch.eye(h.shape[0], device=h.device)
-                h_adjusted = (1-self.mu) * h + self.mu * adjustment
+                h_adjusted = (1 - self.mu) * h + self.mu * adjustment
 
                 h_i = h_adjusted.pinverse()
 

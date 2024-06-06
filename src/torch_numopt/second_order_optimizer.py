@@ -32,4 +32,3 @@ class SecondOrderOptimizer(Optimizer, ABC):
         assert new_shape[0] == new_shape[1], "Something weird happened with the hessian size"
 
         return hess.reshape(new_shape)
-
