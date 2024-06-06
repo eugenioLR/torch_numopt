@@ -1,7 +1,7 @@
 [project]
-name = "pytorch_soom"
-version = "1.0.0"
-description = "Second order optimizaton methods for Pytorch neural networks"
+name = "torch_numopt"
+version = "0.2.0"
+description = "Classic numerical optimizaton methods for Pytorch neural networks"
 readme = "README.md"
 authors = [
     { name = "eugenioLR", email = "eugeniolorente0@gmail.com" }

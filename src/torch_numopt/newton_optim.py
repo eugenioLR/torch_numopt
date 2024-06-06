@@ -2,31 +2,25 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
-from .second_order_optimizer import SecondOrderOptimizer, fix_stability, pinv_svd_trunc
-import warnings
-from copy import deepcopy
+from .second_order_optimizer import SecondOrderOptimizer
+from .utils import fix_stability, pinv_svd_trunc
 
 
-class LM(SecondOrderOptimizer):
+class NewtonRaphson(SecondOrderOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
-    and the matlab implementation of 'learnlm' https://es.mathworks.com/help/deeplearning/ref/trainlm.html#d126e69092
     """
 
     def __init__(
         self,
         params,
-        model,
         lr,
-        mu=1,
-        mu_dec=0.1,
-        mu_max=1e10,
-        use_diagonal=True,
+        model,
         c1=1e-4,
         c2=0.9,
         tau=0.1,
-        line_search_method='const',
-        line_search_cond='armijo',
+        line_search_method="const",
+        line_search_cond="armijo",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -34,14 +28,8 @@ class LM(SecondOrderOptimizer):
         super().__init__(params, {"lr": lr})
 
         self._model = model
+        self._param_keys = dict(model.named_parameters()).keys()
         self._params = self.param_groups[0]["params"]
-        self._j_list = []
-        self._h_list = []
-
-        self.mu = mu
-        self.mu_dec = mu_dec
-        self.mu_max = mu_max
-        self.use_diagonal = use_diagonal
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -55,27 +43,26 @@ class LM(SecondOrderOptimizer):
 
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
-        if self.line_search_cond == 'armijo':
+        if self.line_search_cond == "armijo":
             accepted = new_loss <= loss + self.c1 * lr * dir_deriv
-        elif self.line_search_cond == 'wolfe':
+        elif self.line_search_cond == "wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = new_dir_deriv >= self.c2 * dir_deriv
             accepted = armijo and curv_cond
-        elif self.line_search_cond == 'strong-wolfe':
+        elif self.line_search_cond == "strong-wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = abs(new_dir_deriv) <= self.c2 * abs(dir_deriv)
             accepted = armijo and curv_cond
-        elif self.line_search_cond == 'goldstein':
+        elif self.line_search_cond == "goldstein":
             accepted = loss + (1 - self.c1) * lr * dir_deriv <= new_loss <= loss + self.c1 * lr * dir_deriv
         else:
             raise ValueError(f"Line search condition {self.line_search_cond} does not exist.")
 
         return accepted
-
 
     @torch.enable_grad()
     def _backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model):
@@ -97,7 +84,7 @@ class LM(SecondOrderOptimizer):
                 break
 
         return new_params
-    
+
     def _apply_gradients(self, params, d_p_list, h_list, lr, eval_model):
         """ """
 
@@ -115,22 +102,11 @@ class LM(SecondOrderOptimizer):
     def _get_step_directions(self, d_p_list, h_list, lr):
         dir_list = []
         for d_p, h in zip(d_p_list, h_list):
-            if self.use_diagonal:
-                adjustment = h.diagonal()
-                h_adjusted = h + self.mu * adjustment
-
-                # Use truncated SVD pseudoinverse to address numerical instability
-                h_i = pinv_svd_trunc(h_adjusted)
-            else:
-                adjustment = torch.eye(h.shape[0], device=h.device)
-                h_adjusted = h + self.mu * adjustment
-
-                h_i = h_adjusted.pinverse()
-
-            assert h_i.shape[-1] == d_p.flatten().shape[0], "Tensor dimension mismatch"
+            # Handle issues with numerical stability
+            h = fix_stability(h)
+            h_i = h.pinverse()
 
             d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
-
             dir_list.append(d2_p)
 
         return dir_list
@@ -139,57 +115,28 @@ class LM(SecondOrderOptimizer):
     def step(self, x, y, loss_fn, closure=None):
         """ """
 
-        loss = None
         if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
+            raise NotImplementedError("This optimizer cannot handle closures.")
 
-        param_dict = dict(self._model.named_parameters())
-        keys, values = zip(*param_dict.items())
-        
+        model_params = tuple(self._model.parameters())
+
         def eval_model(*input_params):
-            out = functional_call(self._model, dict(zip(keys, input_params)), x)
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
 
+        # Calculate exact Hessian matrix
+        h_list = torch.autograd.functional.hessian(eval_model, model_params, create_graph=True, vectorize=True)
+        h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
+
         for group in self.param_groups:
-            params_with_grad = []
-            d_p_list = []
             lr = group["lr"]
 
-            # Calculate approximate Hessian matrix
-            self._h_list = []
-            self._j_list = torch.autograd.functional.jacobian(eval_model, values, create_graph=False)
-            for i, j in enumerate(self._j_list):
-                j = j.flatten()
-                h = torch.outer(j, j)
-                self._h_list.append(h)
-
-            # Calculte gradients
+            # Calculate gradients
+            params_with_grad = []
+            d_p_list = []
             for p in group["params"]:
                 if p.grad is not None:
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            h_list = [self._reshape_hessian(h) for h in self._h_list]
-
             self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
-
-        return loss
-
-    def update(self, loss):
-        loss_val = loss.detach().item()
-
-        if self.prev_loss is None:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-        elif loss_val < self.prev_loss:
-            self.prev_loss = loss_val
-            self._prev_params = deepcopy(self._params)
-            self.mu *= self.mu_dec
-        else:
-            self._params = self._prev_params
-            self.mu /= self.mu_dec
-
-        if self.mu >= self.mu_max:
-            self.mu = self.mu_max
-
