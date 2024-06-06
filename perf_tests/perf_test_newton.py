@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import pytorch_soom
+import torch_numopt
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     model = Net(input_size = X.shape[1], device=device)
     loss_fn = nn.MSELoss()
-    opt = pytorch_soom.NewtonRaphson(model.parameters(), lr=1, model=model, c1=1e-4, tau=0.1, line_search_method='backtrack')
+    opt = torch_numopt.NewtonRaphson(model.parameters(), lr=1, model=model, c1=1e-4, tau=0.1, line_search_method='backtrack')
 
     times = []
 

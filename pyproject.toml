@@ -1,5 +1,5 @@
 [project]
-name = "pytorch_soom"
+name = "torch_numopt"
 version = "1.0.0"
 description = "Second order optimizaton methods for Pytorch neural networks"
 readme = "README.md"
