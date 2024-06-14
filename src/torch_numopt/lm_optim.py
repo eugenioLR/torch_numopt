@@ -103,7 +103,7 @@ class LM(SecondOrderOptimizer):
     def _apply_gradients(self, params, d_p_list, h_list, lr, eval_model):
         """ """
 
-        step_dir = self._get_step_directions(d_p_list, h_list, lr)
+        step_dir = self._get_step_directions(d_p_list, h_list)
 
         if self.line_search_method == "backtrack":
             new_params = self._backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model)
@@ -114,7 +114,7 @@ class LM(SecondOrderOptimizer):
         for param, new_param in zip(params, new_params):
             param.copy_(new_param)
 
-    def _get_step_directions(self, d_p_list, h_list, lr):
+    def _get_step_directions(self, d_p_list, h_list):
         dir_list = [None] * len(d_p_list)
         for i, (d_p, h) in enumerate(zip(d_p_list, h_list)):
             if self.use_diagonal:
