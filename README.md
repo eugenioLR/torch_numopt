@@ -13,7 +13,7 @@ Due to computational constraints, methods like Newton-Raphson or Levenberg-Marqu
 - [x] Gauss-Newton
 - [x] Levenberg-Marquard (LM)
 - [x] Approximate Greatest Descent (AGD)
-- [ ] Conjugate Gradient
+- [x] Conjugate Gradient
 - [ ] Quasi-Newton (LBFGS already in pytorch)
 - [ ] Hessian-free / truncated Newton
 - [ ] Stochastic Gradient Descent with Line Search
