@@ -3,13 +3,14 @@ from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
 from .utils import fix_stability, pinv_svd_trunc
+from copy import copy
 
 
 class ConjugateGradient(Optimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf           
-
+    https://arxiv.org/abs/2201.08568
     """
 
     def __init__(
@@ -94,7 +95,6 @@ class ConjugateGradient(Optimizer):
 
     def _apply_gradients(self, params, d_p_list, lr, eval_model):
         """ """
-
         step_dir = self._get_step_directions(d_p_list)
 
         if self.line_search_method == "backtrack":
@@ -102,8 +102,6 @@ class ConjugateGradient(Optimizer):
         elif self.line_search_method == "const":
             with torch.enable_grad():
                 new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
-        
-        self._compute_next_dir(new_params, eval_model)
 
         # Apply new parameters
         for param, new_param in zip(params, new_params):
@@ -111,34 +109,28 @@ class ConjugateGradient(Optimizer):
 
     def _get_step_directions(self, d_p_list):
         """ """
-        dir_list = self.prev_dir if self.prev_dir is not None else d_p_list
-        return dir_list
-    
-    def _compute_next_dir(self, new_params, eval_model):
-        """ """
-        with torch.enable_grad():
-            new_loss = eval_model(*new_params)
-            new_grad = torch.autograd.grad(new_loss, new_params)
-
         if self.prev_dir is None:
-            self.prev_residuals = new_grad
-            self.prev_dir = new_grad
-            return
+            return d_p_list
 
-        for idx, (res, prev_res) in enumerate(zip(new_grad, self.prev_residuals)):
+        next_grad = [None] * len(d_p_list)
+        for idx, (res, prev_res) in enumerate(zip(d_p_list, self.prev_dir)):
             res = res.view((-1, 1))
             prev_res = prev_res.view((-1, 1))
 
             if self.cg_method == "FR":
                 beta = (res.T @ res) / (prev_res.T @ prev_res)
             elif self.cg_method == "PR":
+                beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
+            elif self.cg_method == "PRP+":
                 beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
-            beta = beta.item()
 
-            self.prev_dir[idx].add_(res.view(self.prev_dir[idx].shape), alpha=-beta)
-        
-        self.prev_residuals = new_grad
+            res_reshaped = res.view(next_grad[idx].shape)
+            next_grad[idx].add_(res_reshaped, alpha=-beta)
 
+        self.prev_dir = next_grad
+
+        return next_grad
+    
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
         """ """
@@ -146,11 +138,18 @@ class ConjugateGradient(Optimizer):
         if closure is not None:
             raise NotImplementedError("This optimizer cannot handle closures.")
 
+        residual_fn = copy(loss_fn)
+        residual_fn.reduction = "none"
+
         model_params = tuple(self._model.parameters())
 
         def eval_model(*input_params):
             out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
+
+        def get_residuals(*input_params):
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
+            return residual_fn(out, y)
 
         for group in self.param_groups:
             lr = group["lr"]
