@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Iterable
 import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
@@ -8,18 +10,38 @@ from .utils import fix_stability, pinv_svd_trunc
 class GradientDescentLS(Optimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
+
+    Parameters
+    ----------
+
+    params: Iterable[nn.parameter.Parameter]
+        Parameters of the model to be optimized.
+    model: nn.Module
+        The model to be optimized
+    lr: float
+        Maximum learning rate in backtracking line search, if the learning rate is set as constant, this will be the value used.
+    c1: float
+        Coefficient of the sufficient increase condition in backtracking line search.
+    c2: float
+        Coefficient used in the second condition for wolfe conditions.
+    tau: float
+        Factor used to reduce the step size in each step of the backtracking line search.
+    line_search_method: str
+        Method used for line search, options are "backtrack" and "constant".
+    line_search_cond: str
+        Condition to be used in backtracking line search, options are "armijo", "wolfe", "strong-wolfe" and "goldstein".
     """
 
     def __init__(
         self,
-        params,
-        lr,
-        model,
-        c1=1e-4,
-        c2=0.9,
-        tau=0.1,
-        line_search_method="const",
-        line_search_cond="armijo",
+        params: Iterable[nn.parameter.Parameter],
+        model: nn.Module,
+        lr: float,
+        c1: float = 1e-4,
+        c2: float = 0.9,
+        tau: float = 0.1,
+        line_search_method: str = "const",
+        line_search_cond: str = "armijo",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -38,33 +60,58 @@ class GradientDescentLS(Optimizer):
         self.line_search_cond = line_search_cond
 
     def _line_search_cond(self, params, new_params, step_dir, lr, loss, new_loss, grad):
+        """ """
+
         accepted = True
 
-        dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
+        dir_deriv = sum(
+            [
+                torch.dot(p_grad.flatten(), p_step.flatten())
+                for p_grad, p_step in zip(grad, step_dir)
+            ]
+        )
 
         if self.line_search_cond == "armijo":
             accepted = new_loss <= loss + self.c1 * lr * dir_deriv
         elif self.line_search_cond == "wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
-            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+            new_dir_deriv = sum(
+                [
+                    torch.dot(p_grad.flatten(), p_step.flatten())
+                    for p_grad, p_step in zip(new_grad, step_dir)
+                ]
+            )
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = new_dir_deriv >= self.c2 * dir_deriv
             accepted = armijo and curv_cond
         elif self.line_search_cond == "strong-wolfe":
             new_grad = torch.autograd.grad(new_loss, new_params)
-            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+            new_dir_deriv = sum(
+                [
+                    torch.dot(p_grad.flatten(), p_step.flatten())
+                    for p_grad, p_step in zip(new_grad, step_dir)
+                ]
+            )
             armijo = new_loss <= loss + self.c1 * lr * dir_deriv
             curv_cond = abs(new_dir_deriv) <= self.c2 * abs(dir_deriv)
             accepted = armijo and curv_cond
         elif self.line_search_cond == "goldstein":
-            accepted = loss + (1 - self.c1) * lr * dir_deriv <= new_loss <= loss + self.c1 * lr * dir_deriv
+            accepted = (
+                loss + (1 - self.c1) * lr * dir_deriv
+                <= new_loss
+                <= loss + self.c1 * lr * dir_deriv
+            )
         else:
-            raise ValueError(f"Line search condition {self.line_search_cond} does not exist.")
+            raise ValueError(
+                f"Line search condition {self.line_search_cond} does not exist."
+            )
 
         return accepted
 
     @torch.enable_grad()
     def _backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model):
+        """ """
+
         lr = lr_init
 
         loss = eval_model(*params)
@@ -72,7 +119,9 @@ class GradientDescentLS(Optimizer):
         new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
         new_loss = eval_model(*new_params)
 
-        while not self._line_search_cond(params, new_params, step_dir, lr, loss, new_loss, grad):
+        while not self._line_search_cond(
+            params, new_params, step_dir, lr, loss, new_loss, grad
+        ):
             lr *= self.tau
 
             # Evaluate model with new lr
@@ -90,7 +139,9 @@ class GradientDescentLS(Optimizer):
         step_dir = d_p_list
 
         if self.line_search_method == "backtrack":
-            new_params = self._backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model)
+            new_params = self._backtrack_wolfe(
+                params, step_dir, d_p_list, lr, eval_model
+            )
         elif self.line_search_method == "const":
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
@@ -98,10 +149,20 @@ class GradientDescentLS(Optimizer):
         for param, new_param in zip(params, new_params):
             param.copy_(new_param)
 
-
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
-        """ """
+        """
+        Method to update the parameters of the Neural Network.
+
+        x: torch.Tensor
+            Inputs of the Neural Network.
+        y: torch.Tensor
+            Targets of the Neural Network.
+        loss_fn: callable
+            Loss function to be optimized.
+        closure: callable
+            Kept for compatibility, unused.
+        """
 
         if closure is not None:
             raise NotImplementedError("This optimizer cannot handle closures.")
@@ -109,7 +170,9 @@ class GradientDescentLS(Optimizer):
         model_params = tuple(self._model.parameters())
 
         def eval_model(*input_params):
-            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
+            out = functional_call(
+                self._model, dict(zip(self._param_keys, input_params)), x
+            )
             return loss_fn(out, y)
 
         for group in self.param_groups:
@@ -123,5 +186,6 @@ class GradientDescentLS(Optimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)
-
+            self._apply_gradients(
+                params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model
+            )
