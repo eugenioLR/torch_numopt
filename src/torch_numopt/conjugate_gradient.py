@@ -2,31 +2,28 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
-from .second_order_optimizer import SecondOrderOptimizer
 from .utils import fix_stability, pinv_svd_trunc
-import warnings
+from copy import copy
 
 
-class AGD(SecondOrderOptimizer):
+class ConjugateGradient(Optimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
-    and the matlab implementation of 'learnlm' https://es.mathworks.com/help/deeplearning/ref/trainlm.html#d126e69092
+    https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf           
+    https://arxiv.org/abs/2201.08568
     """
 
     def __init__(
         self,
         params,
-        model,
         lr,
-        mu=1,
-        mu_dec=0.1,
-        mu_max=1e10,
-        use_diagonal=True,
+        model,
         c1=1e-4,
         c2=0.9,
         tau=0.1,
         line_search_method="const",
         line_search_cond="armijo",
+        cg_method="FR",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -37,10 +34,10 @@ class AGD(SecondOrderOptimizer):
         self._param_keys = dict(model.named_parameters()).keys()
         self._params = self.param_groups[0]["params"]
 
-        self.mu = mu
-        self.mu_dec = mu_dec
-        self.mu_max = mu_max
-        self.use_diagonal = use_diagonal
+        # Conjugate gradient memory
+        self.prev_residual = None
+        self.prev_dir = None
+        self.cg_method = cg_method
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -96,39 +93,44 @@ class AGD(SecondOrderOptimizer):
 
         return new_params
 
-    def _apply_gradients(self, params, d_p_list, h_list, lr, eval_model):
+    def _apply_gradients(self, params, d_p_list, lr, eval_model):
         """ """
-
-        step_dir = self._get_step_directions(d_p_list, h_list)
+        step_dir = self._get_step_directions(d_p_list)
 
         if self.line_search_method == "backtrack":
             new_params = self._backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model)
         elif self.line_search_method == "const":
-            new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+            with torch.enable_grad():
+                new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
         # Apply new parameters
         for param, new_param in zip(params, new_params):
             param.copy_(new_param)
 
-    def _get_step_directions(self, d_p_list, h_list):
-        dir_list = [None] * len(d_p_list)
-        for i, (d_p, h) in enumerate(zip(d_p_list, h_list)):
-            if self.use_diagonal:
-                h_adjusted = h + self.mu * h.diagonal()
+    def _get_step_directions(self, d_p_list):
+        """ """
+        if self.prev_dir is None:
+            return d_p_list
 
-                # Use truncated SVD pseudoinverse to address numerical instability
-                h_i = pinv_svd_trunc(h_adjusted)
-            else:
-                h_adjusted = h + self.mu * torch.eye(h.shape[0], device=h.device)
+        next_grad = [None] * len(d_p_list)
+        for idx, (res, prev_res) in enumerate(zip(d_p_list, self.prev_dir)):
+            res = res.view((-1, 1))
+            prev_res = prev_res.view((-1, 1))
 
-                h_i = h_adjusted.pinverse()
+            if self.cg_method == "FR":
+                beta = (res.T @ res) / (prev_res.T @ prev_res)
+            elif self.cg_method == "PR":
+                beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
+            elif self.cg_method == "PRP+":
+                beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
 
-            d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
+            res_reshaped = res.view(next_grad[idx].shape)
+            next_grad[idx].add_(res_reshaped, alpha=-beta)
 
-            dir_list[i] = d2_p
+        self.prev_dir = next_grad
 
-        return dir_list
-
+        return next_grad
+    
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
         """ """
@@ -136,15 +138,18 @@ class AGD(SecondOrderOptimizer):
         if closure is not None:
             raise NotImplementedError("This optimizer cannot handle closures.")
 
+        residual_fn = copy(loss_fn)
+        residual_fn.reduction = "none"
+
         model_params = tuple(self._model.parameters())
 
         def eval_model(*input_params):
             out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
             return loss_fn(out, y)
 
-        # Calculate exact Hessian matrix
-        h_list = torch.autograd.functional.hessian(eval_model, model_params, create_graph=True, vectorize=True)
-        h_list = [self._reshape_hessian(h_list[i][i]) for i, _ in enumerate(h_list)]
+        def get_residuals(*input_params):
+            out = functional_call(self._model, dict(zip(self._param_keys, input_params)), x)
+            return residual_fn(out, y)
 
         for group in self.param_groups:
             lr = group["lr"]
@@ -157,4 +162,6 @@ class AGD(SecondOrderOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, h_list=h_list, lr=lr, eval_model=eval_model)
+            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)
+
+
