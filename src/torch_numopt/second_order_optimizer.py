@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import torch
+import torch.nn as nn
 from torch.optim.optimizer import Optimizer
 from functools import reduce
 
@@ -14,7 +15,7 @@ class SecondOrderOptimizer(Optimizer, ABC):
         self,
         x: torch.Tensor,
         y: torch.Tensor,
-        loss_fn: callable,
+        loss_fn: nn.Module,
         closure: callable = None,
     ):
         """
@@ -24,13 +25,13 @@ class SecondOrderOptimizer(Optimizer, ABC):
             Inputs of the Neural Network.
         y: torch.Tensor
             Targets of the Neural Network.
-        loss_fn: callable
+        loss_fn: nn.Module
             Loss function to be optimized.
         closure: callable
             Kept for compatibility, unused.
         """
 
-    def update(self, loss):
+    def update(self, loss: float):
         """
         Function to update the internal parameters of the optimization procedure.
 
@@ -39,7 +40,7 @@ class SecondOrderOptimizer(Optimizer, ABC):
         """
 
     @staticmethod
-    def _reshape_hessian(hess):
+    def _reshape_hessian(hess: torch.Tensor):
         """
         Procedure to reshape a misshapen hessian matrix.
 
@@ -59,8 +60,6 @@ class SecondOrderOptimizer(Optimizer, ABC):
             reduce(lambda x, y: x * y, hess.size()[: hess.dim() // 2]),
         )
 
-        assert (
-            new_shape[0] == new_shape[1]
-        ), "Something weird happened with the hessian size"
+        assert new_shape[0] == new_shape[1], "Something weird happened with the hessian size"
 
         return hess.reshape(new_shape)
