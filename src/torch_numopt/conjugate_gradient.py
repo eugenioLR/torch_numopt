@@ -6,7 +6,7 @@ from torch.autograd.functional import hessian
 from torch.func import functional_call
 from .utils import fix_stability, pinv_svd_trunc
 from .line_search_mixin import LineSearchMixin
-from copy import copy
+from copy import deepcopy, copy
 
 
 class ConjugateGradient(LineSearchMixin, Optimizer):
@@ -85,13 +85,17 @@ class ConjugateGradient(LineSearchMixin, Optimizer):
 
     def _get_step_directions(self, d_p_list):
         """ """
+
         if self.prev_dir is None:
+            self.prev_residual = self.prev_dir = d_p_list
             return d_p_list
 
-        next_grad = [None] * len(d_p_list)
-        for idx, (res, prev_res) in enumerate(zip(d_p_list, self.prev_dir)):
+        # next_grad = [None] * len(d_p_list)
+        next_grad = deepcopy(d_p_list)
+        for idx, (res, prev_res, prev_dir) in enumerate(zip(d_p_list, self.prev_residual, self.prev_dir)):
             res = res.view((-1, 1))
             prev_res = prev_res.view((-1, 1))
+            prev_dir = prev_dir.view((-1, 1))
 
             if self.cg_method == "FR":
                 beta = (res.T @ res) / (prev_res.T @ prev_res)
@@ -99,10 +103,21 @@ class ConjugateGradient(LineSearchMixin, Optimizer):
                 beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
             elif self.cg_method == "PRP+":
                 beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
+            elif self.cg_method == "HS":
+                beta =  (res.T @ (res - prev_res)) / (-prev_dir.T @ (res - prev_res))
+            elif self.cg_method == "DY":
+                beta =  (res.T @ res) / (-prev_dir.T @ (res - prev_res))
+            
+            # beta = torch.clamp(beta, min=-1e6, max=1e6)
+            if not torch.isfinite(beta):
+                beta = torch.zeros(1)
 
             res_reshaped = res.view(next_grad[idx].shape)
-            next_grad[idx].add_(res_reshaped, alpha=-beta)
+            next_grad[idx].add_(res_reshaped, alpha=-beta.item())
+            if not torch.any(torch.isfinite(next_grad[idx])):
+                print(beta)
 
+        self.prev_residual = d_p_list
         self.prev_dir = next_grad
 
         return next_grad

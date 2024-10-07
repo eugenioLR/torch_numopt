@@ -63,6 +63,8 @@ class GradientDescentLS(LineSearchMixin, Optimizer):
 
         if self.line_search_method == "backtrack":
             new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
+        elif self.line_search_method == "bisect":
+            new_params = self.bisect_search(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2)
         elif self.line_search_method == "const":
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
