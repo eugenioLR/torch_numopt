@@ -1,14 +1,13 @@
 from __future__ import annotations
 from typing import Iterable
 import torch
-from torch.optim.optimizer import Optimizer, required
-from torch.autograd.functional import hessian
+import torch.nn as nn
 from torch.func import functional_call
 from .line_search_mixin import LineSearchMixin
-from .utils import fix_stability, pinv_svd_trunc
+from .custom_optimizer import CustomOptimizer
 
 
-class GradientDescentLS(LineSearchMixin, Optimizer):
+class GradientDescentLS(LineSearchMixin, CustomOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
 

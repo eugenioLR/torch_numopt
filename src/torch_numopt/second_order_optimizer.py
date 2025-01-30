@@ -1,12 +1,11 @@
 from __future__ import annotations
 from abc import ABC
 import torch
-import torch.nn as nn
-from torch.optim.optimizer import Optimizer
 from functools import reduce
+from .custom_optimizer import CustomOptimizer
 
 
-class SecondOrderOptimizer(Optimizer, ABC):
+class SecondOrderOptimizer(CustomOptimizer, ABC):
     """
     Class for Optimization methods using second derivative information.
     """

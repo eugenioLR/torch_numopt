@@ -1,3 +1,4 @@
+from .custom_optimizer import CustomOptimizer
 from .second_order_optimizer import SecondOrderOptimizer
 from .newton_optim import NewtonRaphson
 from .gauss_newton_optim import GaussNewton

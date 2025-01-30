@@ -2,6 +2,10 @@ import torch
 
 
 class LineSearchMixin:
+    """
+    Mixin to add a line search procedure to an optmization algorithm.
+    """
+
     def accept_step(self, params, new_params, step_dir, lr, loss, new_loss, grad, c1, c2, line_search_cond):
         """ """
 
