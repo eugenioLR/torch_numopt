@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Iterable
 import torch
 import torch.nn as nn
-from torch.optim.optimizer import Optimizer, required
 from torch.autograd.functional import hessian
 from torch.func import functional_call
 from .second_order_optimizer import SecondOrderOptimizer
@@ -87,6 +86,7 @@ class AGD(LineSearchMixin, SecondOrderOptimizer):
             new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
         elif self.line_search_method == "const":
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+        
 
         # Apply new parameters
         for param, new_param in zip(params, new_params):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Iterable
 import torch
-from torch.optim.optimizer import Optimizer, required
+import torch.nn as nn
 from torch.autograd.functional import hessian
 from torch.func import functional_call
 from .second_order_optimizer import SecondOrderOptimizer

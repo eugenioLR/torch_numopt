@@ -1,15 +1,14 @@
 from __future__ import annotations
 from typing import Iterable
 import torch
-from torch.optim.optimizer import Optimizer, required
-from torch.autograd.functional import hessian
+import torch.nn as nn
 from torch.func import functional_call
-from .utils import fix_stability, pinv_svd_trunc
 from .line_search_mixin import LineSearchMixin
+from .custom_optimizer import CustomOptimizer
 from copy import copy
 
 
-class ConjugateGradient(LineSearchMixin, Optimizer):
+class ConjugateGradient(LineSearchMixin, CustomOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf
