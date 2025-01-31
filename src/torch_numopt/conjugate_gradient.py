@@ -72,10 +72,10 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
 
         step_dir = self._get_step_directions(d_p_list)
 
-        if self.line_search_method == "backtrack":
-            new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
-        elif self.line_search_method == "const":
-            with torch.enable_grad():
+        match self.line_search_method:
+            case "backtrack":
+                new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
+            case "const":
                 new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
         # Apply new parameters
@@ -92,12 +92,13 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
             res = res.view((-1, 1))
             prev_res = prev_res.view((-1, 1))
 
-            if self.cg_method == "FR":
-                beta = (res.T @ res) / (prev_res.T @ prev_res)
-            elif self.cg_method == "PR":
-                beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
-            elif self.cg_method == "PRP+":
-                beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
+            match cg_method:
+                case "FR":
+                    beta = (res.T @ res) / (prev_res.T @ prev_res)
+                case "PR":
+                    beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
+                case "PRP+":
+                    beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
 
             res_reshaped = res.view(next_grad[idx].shape)
             next_grad[idx].add_(res_reshaped, alpha=-beta)

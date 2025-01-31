@@ -13,24 +13,25 @@ class LineSearchMixin:
 
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
-        if line_search_cond == "armijo":
-            accepted = new_loss <= loss + c1 * lr * dir_deriv
-        elif line_search_cond == "wolfe":
-            new_grad = torch.autograd.grad(new_loss, new_params)
-            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
-            armijo = new_loss <= loss + c1 * lr * dir_deriv
-            curv_cond = new_dir_deriv >= c2 * dir_deriv
-            accepted = armijo and curv_cond
-        elif line_search_cond == "strong-wolfe":
-            new_grad = torch.autograd.grad(new_loss, new_params)
-            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
-            armijo = new_loss <= loss + c1 * lr * dir_deriv
-            curv_cond = abs(new_dir_deriv) <= c2 * abs(dir_deriv)
-            accepted = armijo and curv_cond
-        elif line_search_cond == "goldstein":
-            accepted = loss + (1 - c1) * lr * dir_deriv <= new_loss <= loss + c1 * lr * dir_deriv
-        else:
-            raise ValueError(f"Line search condition {line_search_cond} does not exist.")
+        match line_search_cond:
+            case "armijo":
+                accepted = new_loss <= loss + c1 * lr * dir_deriv
+            case "wolfe":
+                new_grad = torch.autograd.grad(new_loss, new_params)
+                new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+                armijo = new_loss <= loss + c1 * lr * dir_deriv
+                curv_cond = new_dir_deriv >= c2 * dir_deriv
+                accepted = armijo and curv_cond
+            case "strong-wolfe":
+                new_grad = torch.autograd.grad(new_loss, new_params)
+                new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+                armijo = new_loss <= loss + c1 * lr * dir_deriv
+                curv_cond = abs(new_dir_deriv) <= c2 * abs(dir_deriv)
+                accepted = armijo and curv_cond
+            case "goldstein":
+                accepted = loss + (1 - c1) * lr * dir_deriv <= new_loss <= loss + c1 * lr * dir_deriv
+            case _:
+                raise ValueError(f"Line search condition {line_search_cond} does not exist.")
 
         return accepted
 
