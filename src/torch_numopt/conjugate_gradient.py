@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.func import functional_call
 from .line_search_mixin import LineSearchMixin
 from .custom_optimizer import CustomOptimizer
-from copy import copy
+from copy import copy, deepcopy
 
 
 class ConjugateGradient(LineSearchMixin, CustomOptimizer):
@@ -75,8 +75,7 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
         if self.line_search_method == "backtrack":
             new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
         elif self.line_search_method == "const":
-            with torch.enable_grad():
-                new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+            new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
         # Apply new parameters
         for param, new_param in zip(params, new_params):

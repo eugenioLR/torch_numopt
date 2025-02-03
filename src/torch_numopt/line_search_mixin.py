@@ -56,48 +56,33 @@ class LineSearchMixin:
     
     
     @torch.enable_grad()
-    def bisect_search(self, params, step_dir, grad, lr_init, eval_model, c1, c2):
+    def bisect_search(self, params, step_dir, grad, lr_init, eval_model, iter_max=1000, tol=1e-6):
         """ """
 
         lr = lr_init
-
-        loss = eval_model(*params)
-
-        dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
+        a_min = 0
+        a_max = lr
 
         new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
         new_loss = eval_model(*new_params)
         new_grad = torch.autograd.grad(new_loss, new_params)
         new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
 
-        a_min = 0
-        a_max = None
+        for _ in range(iter_max):
+            lr = 0.5*(a_max + a_min)
 
-        while True:
-            if new_loss > loss + c1 * lr * dir_deriv:
-                a_max = lr
-                lr = 0.5*(a_min + a_max)
-                print("A")
-            elif new_dir_deriv < c2 * dir_deriv:
-                a_min = lr
-                if a_max is None:
-                    lr = 2*lr
-                else:
-                    lr = 0.5*(a_min + a_max)
-                print("B")
-            else:
-                print("C")
+            if torch.abs(new_dir_deriv) < tol or a_max == a_min:
                 break
-            print()
-
-            print(new_loss, loss + c1 * lr * dir_deriv, new_dir_deriv, c2 * dir_deriv)
+            elif new_dir_deriv < 0:
+                a_max = lr
+            elif new_dir_deriv > 0:
+                a_min = lr
 
             new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
             new_loss = eval_model(*new_params)
 
             new_grad = torch.autograd.grad(new_loss, new_params)
             new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
-            
 
         return new_params
     
