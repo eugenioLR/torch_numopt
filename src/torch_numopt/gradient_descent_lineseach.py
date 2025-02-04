@@ -63,6 +63,9 @@ class GradientDescentLS(LineSearchMixin, CustomOptimizer):
         match self.line_search_method:
             case "backtrack":
                 new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
+            case "interpolate":
+                # new_params = self.interpolate_quadratic(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.line_search_cond)
+                new_params = self.interpolate_cubic(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.line_search_cond)
             case "const":
                 new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
 
