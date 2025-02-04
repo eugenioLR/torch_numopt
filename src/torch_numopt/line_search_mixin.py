@@ -54,9 +54,53 @@ class LineSearchMixin:
 
         return new_params
     
+    def bisect_search(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond="gradroot"):
+        new_params = None
+
+        match line_search_cond:
+            case "gradroot":
+                new_params = self.bisect_gradroot(self, params, step_dir, grad, lr_init, eval_model)
+            case "wolfe" | "strong-wolfe" | "armijo":
+                new_params = self.bisect_wolfe(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond)
+        
+        return new_params
+
+
+    
     
     @torch.enable_grad()
-    def bisect_search(self, params, step_dir, grad, lr_init, eval_model, iter_max=1000, tol=1e-6):
+    def bisect_wolfe(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond):
+
+        lr = lr_init
+        a_min = 0
+        a_max = lr
+
+        new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+        new_loss = eval_model(*new_params)
+        new_grad = torch.autograd.grad(new_loss, new_params)
+        new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+
+        for _ in range(iter_max):
+            lr = 0.5*(a_max + a_min)
+
+            if torch.abs(new_dir_deriv) < tol or a_max == a_min:
+                break
+            elif new_dir_deriv < 0:
+                a_max = lr
+            elif new_dir_deriv > 0:
+                a_min = lr
+
+            new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+            new_loss = eval_model(*new_params)
+
+            new_grad = torch.autograd.grad(new_loss, new_params)
+            new_dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(new_grad, step_dir)])
+
+        return new_params
+
+
+    @torch.enable_grad()
+    def bisect_gradroot(self, params, step_dir, grad, lr_init, eval_model, iter_max=1000, tol=1e-6):
         """ """
 
         lr = lr_init
