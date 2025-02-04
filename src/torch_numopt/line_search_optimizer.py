@@ -1,11 +1,14 @@
+from abc import ABC, abstractmethod
 import torch
+from .custom_optimizer import CustomOptimizer
 
 
-class LineSearchMixin:
+class LineSearchOptimizer(CustomOptimizer, ABC):
     """
     Mixin to add a line search procedure to an optmization algorithm.
     """
 
+    @torch.enable_grad()
     def accept_step(self, params, new_params, step_dir, lr, loss, new_loss, grad, c1, c2, line_search_cond):
         """ """
 
@@ -35,8 +38,7 @@ class LineSearchMixin:
 
         return accepted
 
-    @torch.enable_grad()
-    def backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond="armijo"):
+    def backtrack(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond="armijo"):
         """ """
 
         lr = lr_init
@@ -57,3 +59,22 @@ class LineSearchMixin:
                 break
 
         return new_params
+
+    def apply_gradients(self, lr, eval_model, params, d_p_list, h_list=None):
+        """ """
+
+        step_dir = self.get_step_direction(d_p_list, h_list)
+
+        match self.line_search_method:
+            case "backtrack":
+                new_params = self.backtrack(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
+            case "const":
+                new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+
+        # Apply new parameters
+        for param, new_param in zip(params, new_params):
+            param.copy_(new_param)
+
+    @abstractmethod
+    def get_step_direction(self, d_p_list, h_list):
+        pass
