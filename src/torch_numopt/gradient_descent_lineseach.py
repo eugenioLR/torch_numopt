@@ -3,11 +3,11 @@ from typing import Iterable
 import torch
 import torch.nn as nn
 from torch.func import functional_call
-from .line_search_mixin import LineSearchMixin
+from .line_search_optimizer import LineSearchOptimizer
 from .custom_optimizer import CustomOptimizer
 
 
-class GradientDescentLS(LineSearchMixin, CustomOptimizer):
+class GradientDescentLS(LineSearchOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
 
@@ -55,21 +55,8 @@ class GradientDescentLS(LineSearchMixin, CustomOptimizer):
         self.line_search_method = line_search_method
         self.line_search_cond = line_search_cond
 
-    def _apply_gradients(self, params, d_p_list, lr, eval_model):
-        """ """
-
-        step_dir = d_p_list
-
-        if self.line_search_method == "backtrack":
-            new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
-        elif self.line_search_method == "bisect":
-            new_params = self.bisect_search(params, step_dir, d_p_list, lr, eval_model)
-        elif self.line_search_method == "const":
-            new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
-
-        # Apply new parameters
-        for param, new_param in zip(params, new_params):
-            param.copy_(new_param)
+    def get_step_direction(self, d_p_list, h_list):
+        return d_p_list
 
     @torch.no_grad()
     def step(self, x, y, loss_fn, closure=None):
@@ -106,4 +93,4 @@ class GradientDescentLS(LineSearchMixin, CustomOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)
+            self.apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)

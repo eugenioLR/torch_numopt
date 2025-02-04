@@ -3,12 +3,12 @@ from typing import Iterable
 import torch
 import torch.nn as nn
 from torch.func import functional_call
-from .line_search_mixin import LineSearchMixin
+from .line_search_optimizer import LineSearchOptimizer
 from .custom_optimizer import CustomOptimizer
 from copy import copy, deepcopy
 
 
-class ConjugateGradient(LineSearchMixin, CustomOptimizer):
+class ConjugateGradient(LineSearchOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf
@@ -67,21 +67,8 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
         self.line_search_method = line_search_method
         self.line_search_cond = line_search_cond
 
-    def _apply_gradients(self, params, d_p_list, lr, eval_model):
-        """ """
 
-        step_dir = self._get_step_directions(d_p_list)
-
-        if self.line_search_method == "backtrack":
-            new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
-        elif self.line_search_method == "const":
-            new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
-
-        # Apply new parameters
-        for param, new_param in zip(params, new_params):
-            param.copy_(new_param)
-
-    def _get_step_directions(self, d_p_list):
+    def get_step_direction(self, d_p_list, h_list=None):
         """ """
 
         if self.prev_dir is None:
@@ -94,18 +81,19 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
             res = res.view((-1, 1))
             prev_res = prev_res.view((-1, 1))
             prev_dir = prev_dir.view((-1, 1))
-
-            if self.cg_method == "FR":
-                beta = (res.T @ res) / (prev_res.T @ prev_res)
-            elif self.cg_method == "PR":
-                beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
-            elif self.cg_method == "PRP+":
-                beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
-            elif self.cg_method == "HS":
-                beta =  (res.T @ (res - prev_res)) / (-prev_dir.T @ (res - prev_res))
-            elif self.cg_method == "DY":
-                beta =  (res.T @ res) / (-prev_dir.T @ (res - prev_res))
             
+            match self.cg_method:
+                case "FR":
+                    beta = (res.T @ res) / (prev_res.T @ prev_res)
+                case "PR":
+                    beta = (res.T @ (res - prev_res)) / (prev_res.T @ prev_res)
+                case "PRP+":
+                    beta = torch.relu((res.T @ (res - prev_res)) / (prev_res.T @ prev_res))
+                case "HS":
+                    beta =  (res.T @ (res - prev_res)) / (-prev_dir.T @ (res - prev_res))
+                case "DY":
+                    beta =  (res.T @ res) / (-prev_dir.T @ (res - prev_res))
+
             # beta = torch.clamp(beta, min=-1e6, max=1e6)
             if not torch.isfinite(beta):
                 beta = torch.zeros(1)
@@ -149,4 +137,4 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)
+            self.apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)

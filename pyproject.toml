@@ -13,8 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-
 dev = [
+    "scikit-learn",
     "matplotlib",
-    "seaborn",
+    "numpy"
 ]
+

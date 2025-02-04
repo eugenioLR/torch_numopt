@@ -1,5 +1,5 @@
 from __future__ import annotations
-from abc import ABC
+from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 from torch.optim.optimizer import Optimizer
@@ -11,6 +11,7 @@ class CustomOptimizer(Optimizer, ABC):
     Class for Optimization methods using second derivative information.
     """
 
+    @abstractmethod
     def step(
         self,
         x: torch.Tensor,
