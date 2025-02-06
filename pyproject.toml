@@ -16,6 +16,8 @@ dependencies = [
 dev = [
     "scikit-learn",
     "matplotlib",
-    "numpy"
+    "numpy",
+    "sphinx>=7.1.1",
+    "sphinx_material",
 ]
 
