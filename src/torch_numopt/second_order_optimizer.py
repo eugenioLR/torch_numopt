@@ -15,6 +15,9 @@ class SecondOrderOptimizer(LineSearchOptimizer, ABC):
         """
         Procedure to reshape a misshapen hessian matrix.
 
+        Parameters
+        ----------
+
         hess: torch.Tensor
             Misshapen hessian matrix.
         """
