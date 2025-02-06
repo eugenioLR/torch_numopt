@@ -48,12 +48,13 @@ class AGD(SecondOrderOptimizer):
         mu: float = 1,
         mu_dec: float = 0.1,
         mu_max: float = 1e10,
-        use_diagonal: bool = True,
+        fletcher: bool = False,
         c1: float = 1e-4,
         c2: float = 0.9,
         tau: float = 0.1,
         line_search_method: str = "const",
         line_search_cond: str = "armijo",
+        solver: str = "solve",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -67,7 +68,7 @@ class AGD(SecondOrderOptimizer):
         self.mu = mu
         self.mu_dec = mu_dec
         self.mu_max = mu_max
-        self.use_diagonal = use_diagonal
+        self.fletcher = fletcher
 
         # Coefficients for the strong-wolfe conditions
         self.c1 = c1
@@ -76,20 +77,26 @@ class AGD(SecondOrderOptimizer):
         self.line_search_method = line_search_method
         self.line_search_cond = line_search_cond
 
+        self.solver = solver
+
     def get_step_direction(self, d_p_list, h_list):
         dir_list = [None] * len(d_p_list)
         for i, (d_p, h) in enumerate(zip(d_p_list, h_list)):
-            if self.use_diagonal:
+            if self.fletcher:
                 h_adjusted = h + self.mu * h.diagonal()
-
-                # Use truncated SVD pseudoinverse to address numerical instability
-                h_i = pinv_svd_trunc(h_adjusted)
             else:
                 h_adjusted = h + self.mu * torch.eye(h.shape[0], device=h.device)
 
-                h_i = h_adjusted.pinverse()
-
-            d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
+            match self.solver:
+                case "pinv":
+                    if self.fletcher:
+                        h_i = pinv_svd_trunc(h_adjusted)
+                    else:
+                        h_i = h_adjusted.pinverse()
+                    
+                    d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
+                case "solve":
+                    d2_p = torch.linalg.solve(h_adjusted, d_p.flatten()).reshape(d_p.shape)
 
             dir_list[i] = d2_p
 

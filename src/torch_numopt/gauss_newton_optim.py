@@ -41,6 +41,7 @@ class GaussNewton(SecondOrderOptimizer):
         tau: float = 0.1,
         line_search_method: str = "const",
         line_search_cond: str = "armijo",
+        solver: str = "solve",
         **kwargs,
     ):
         assert lr > 0, "Learning rate must be a positive number."
@@ -58,14 +59,20 @@ class GaussNewton(SecondOrderOptimizer):
         self.line_search_method = line_search_method
         self.line_search_cond = line_search_cond
 
+        self.solver = solver
+
     def get_step_direction(self, d_p_list, h_list):
         dir_list = [None] * len(d_p_list)
         for i, (d_p, h) in enumerate(zip(d_p_list, h_list)):
-            # Handle issues with numerical stability
-            h = fix_stability(h)
-            h_i = h.pinverse()
+            if torch.linalg.cond(h) > 1e8:
+                h = fix_stability(h)
 
-            d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
+            match self.solver:
+                case "pinv":
+                    h_i = h.pinverse()
+                    d2_p = (h_i @ d_p.flatten()).reshape(d_p.shape)
+                case "solve":
+                    d2_p = torch.linalg.solve(h, d_p.flatten()).reshape(d_p.shape)
 
             dir_list[i] = d2_p
 
