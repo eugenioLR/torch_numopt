@@ -1,5 +1,5 @@
-Implemented Algorithms
-======================
+torch\_numopt implemented Algorithms
+====================================
 
 Gradient Descent with Line Search 
 ---------------------------------
