@@ -1,8 +1,14 @@
 # Torch Numerical Optimization
 
-Implementation of numerical optimization methods for Neural Networks.
+This package implements classic numerical optimization methods for training Artificial Neural Networks. 
 
-Due to computational constraints, methods like Newton-Raphson or Levenberg-Marquardt are to be used with small Neural Networks as they require $O(p^3)$ space for a network with $p$ parameters.
+These methods are not very common in Deep learning frameworks due to their computational requirements, like in the case of Newton-Raphson and Levemberg-Marquardt, which require a large amount of memory since they use information about the second derivative of the loss function. For this reason, it is recommended that these algorithms are applied only to Neural Networks with few hidden layers.
+
+There are also a couple of methods that do not require that much memory such as SGD with line search and the Conjugate Gradient method.
+
+<!-- Implementation of numerical optimization methods for Neural Networks.
+
+Due to computational constraints, methods like Newton-Raphson or Levenberg-Marquardt are to be used with small Neural Networks as they require $O(p^3)$ space for a network with $p$ parameters. -->
 
 ## References
 [relevant paper](https://iopscience.iop.org/article/10.1088/1757-899X/495/1/012003/pdf)

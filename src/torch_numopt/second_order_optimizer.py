@@ -1,22 +1,24 @@
+from __future__ import annotations
 from abc import ABC
 import torch
-from torch.optim.optimizer import Optimizer
 from functools import reduce
+from .line_search_optimizer import LineSearchOptimizer
 
 
-class SecondOrderOptimizer(Optimizer, ABC):
+class SecondOrderOptimizer(LineSearchOptimizer, ABC):
     """
     Class for Optimization methods using second derivative information.
     """
 
-    def step(self, x, y, closure=None):
-        """ """
-
-    def update(self, loss):
-        """ """
-
     @staticmethod
-    def _reshape_hessian(hess):
+    def _reshape_hessian(hess: torch.Tensor):
+        """
+        Procedure to reshape a misshapen hessian matrix.
+
+        hess: torch.Tensor
+            Misshapen hessian matrix.
+        """
+
         if len(hess.shape) == 2:
             return hess
 
