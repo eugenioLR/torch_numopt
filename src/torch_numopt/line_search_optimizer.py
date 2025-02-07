@@ -1,7 +1,9 @@
+from abc import ABC, abstractmethod
 import torch
+from .custom_optimizer import CustomOptimizer
 
 
-class LineSearchMixin:
+class LineSearchOptimizer(CustomOptimizer, ABC):
     """
     Mixin to add a line search procedure to an optmization algorithm.
     """
@@ -36,7 +38,8 @@ class LineSearchMixin:
 
         return accepted
 
-    def backtrack_wolfe(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond="armijo"):
+    @torch.enable_grad()
+    def backtrack(self, params, step_dir, grad, lr_init, eval_model, c1, c2, tau, line_search_cond="armijo"):
         """ """
 
         lr = lr_init
@@ -59,6 +62,7 @@ class LineSearchMixin:
         return new_params
 
     
+    @torch.enable_grad()
     def interpolate_quadratic(self, params, step_dir, grad, lr_init, eval_model, c1, c2, line_search_cond="armijo"):
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
@@ -68,7 +72,9 @@ class LineSearchMixin:
         new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
         new_loss = eval_model(*new_params)
 
+        print()
         while not self.accept_step(params, new_params, step_dir, lr, loss, new_loss, grad, c1, c2, line_search_cond):
+            print(lr)
             if lr == 0:
                 break
 
@@ -79,6 +85,7 @@ class LineSearchMixin:
 
         return new_params
     
+    @torch.enable_grad()
     def interpolate_cubic(self, params, step_dir, grad, lr_init, eval_model, c1, c2, line_search_cond="armijo"):
         dir_deriv = sum([torch.dot(p_grad.flatten(), p_step.flatten()) for p_grad, p_step in zip(grad, step_dir)])
 
@@ -118,6 +125,24 @@ class LineSearchMixin:
             new_loss = eval_model(*new_params)
 
         return new_params
+    
+    def apply_gradients(self, lr, eval_model, params, d_p_list, h_list=None):
+        """ """
 
-    
-    
+        step_dir = self.get_step_direction(d_p_list, h_list)
+
+        match self.line_search_method:
+            case "backtrack":
+                new_params = self.backtrack(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
+            case "interpolate":
+                new_params =  self.interpolate_quadratic(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.line_search_cond)
+            case "const":
+                new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
+
+        # Apply new parameters
+        for param, new_param in zip(params, new_params):
+            param.copy_(new_param)
+
+    @abstractmethod
+    def get_step_direction(self, d_p_list, h_list):
+        pass

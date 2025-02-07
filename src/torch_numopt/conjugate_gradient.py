@@ -3,12 +3,12 @@ from typing import Iterable
 import torch
 import torch.nn as nn
 from torch.func import functional_call
-from .line_search_mixin import LineSearchMixin
+from .line_search_optimizer import LineSearchOptimizer
 from .custom_optimizer import CustomOptimizer
 from copy import copy
 
 
-class ConjugateGradient(LineSearchMixin, CustomOptimizer):
+class ConjugateGradient(LineSearchOptimizer):
     """
     Heavily inspired by https://github.com/hahnec/torchimize/blob/master/torchimize/optimizer/gna_opt.py
     https://www.cs.cmu.edu/~quake-papers/painless-conjugate-gradient.pdf
@@ -67,22 +67,8 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
         self.line_search_method = line_search_method
         self.line_search_cond = line_search_cond
 
-    def _apply_gradients(self, params, d_p_list, lr, eval_model):
-        """ """
 
-        step_dir = self._get_step_directions(d_p_list)
-
-        match self.line_search_method:
-            case "backtrack":
-                new_params = self.backtrack_wolfe(params, step_dir, d_p_list, lr, eval_model, self.c1, self.c2, self.tau, self.line_search_cond)
-            case "const":
-                new_params = tuple(p - lr * p_step for p, p_step in zip(params, step_dir))
-
-        # Apply new parameters
-        for param, new_param in zip(params, new_params):
-            param.copy_(new_param)
-
-    def _get_step_directions(self, d_p_list):
+    def get_step_direction(self, d_p_list, h_list=None):
         """ """
         if self.prev_dir is None:
             return d_p_list
@@ -136,4 +122,4 @@ class ConjugateGradient(LineSearchMixin, CustomOptimizer):
                     params_with_grad.append(p)
                     d_p_list.append(p.grad)
 
-            self._apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)
+            self.apply_gradients(params=params_with_grad, d_p_list=d_p_list, lr=lr, eval_model=eval_model)

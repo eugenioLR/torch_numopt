@@ -2,10 +2,10 @@ from __future__ import annotations
 from abc import ABC
 import torch
 from functools import reduce
-from .custom_optimizer import CustomOptimizer
+from .line_search_optimizer import LineSearchOptimizer
 
 
-class SecondOrderOptimizer(CustomOptimizer, ABC):
+class SecondOrderOptimizer(LineSearchOptimizer, ABC):
     """
     Class for Optimization methods using second derivative information.
     """
