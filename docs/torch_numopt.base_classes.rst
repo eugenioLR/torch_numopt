@@ -1,5 +1,5 @@
-Base classes
-=====================
+torch\_numopt base classes
+==========================
 
 Custom Optimizer class
 ---------------------------------------------
